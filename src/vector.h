@@ -23,6 +23,7 @@
 #define _AAPL_VECTOR_H
 
 #include <new>
+#include <utility>
 #include <string.h>
 #include <stdlib.h>
 #include <assert.h>
@@ -466,8 +467,11 @@ public:
 protected:
  	void makeRawSpaceFor(long pos, long len);
 
-	void upResize(long len);
-	void downResize(long len);
+	void upResize( long len );
+	void downResize( long len );
+
+	static void v_memmove( T *src, T *dst, long n );
+	static T *v_realloc( T *data, int len, int newLen );
 };
 
 /* Init a vector iterator with just a vector. */
@@ -638,6 +642,34 @@ template<class T, class Resize> Vector<T, Resize> &Vector<T, Resize>::
 	return *this;
 }
 
+/* Implementation of memmove and realloc funcs that respect C++ move semantics.
+ * Note that these take lengths expressed as multiples of sizeof(T) */
+template<class T, class Resize> void Vector<T, Resize>::
+		v_memmove( T *dst, T *src, long n )
+{
+	if ( dst > src ) {
+		for ( long i = n - 1; i >= 0; i-- ) {
+			new(dst + i) T();
+			dst[i] = std::move( src[i] );
+		}
+	}
+	else {
+		::memmove( src, dst, sizeof(T)*n );
+	}
+}
+
+template<class T, class Resize> T *Vector<T, Resize>::v_realloc( T *data, int len, int newLen )
+{
+	T *newData = (T*) malloc( sizeof(T) * newLen );
+	for ( int i = 0; i < len; i++ ) {
+		new(newData + i) T();
+		newData[i] = std::move( data[i] );
+	}
+	free( data );
+	return newData;
+}
+
+
 /* Up resize the data for len elements using Resize::upResize to tell us the
  * new tabLen. Reads and writes allocLen. Does not read or write tabLen. */
 template<class T, class Resize> void Vector<T, Resize>::
@@ -651,7 +683,7 @@ template<class T, class Resize> void Vector<T, Resize>::
 		BaseTable::allocLen = newLen;
 		if ( BaseTable::data != 0 ) {
 			/* Table exists already, resize it up. */
-			BaseTable::data = (T*) realloc( BaseTable::data, sizeof(T) * newLen );
+			BaseTable::data = v_realloc( BaseTable::data, BaseTable::tabLen, newLen );
 			if ( BaseTable::data == 0 )
 				throw std::bad_alloc();
 		}
@@ -682,7 +714,7 @@ template<class T, class Resize> void Vector<T, Resize>::
 		}
 		else {
 			/* Not shrinking to size zero, realloc it to the smaller size. */
-			BaseTable::data = (T*) realloc( BaseTable::data, sizeof(T) * newLen );
+			BaseTable::data = v_realloc( BaseTable::data, newLen );
 			if ( BaseTable::data == 0 )
 				throw std::bad_alloc();
 		}
@@ -1033,7 +1065,7 @@ template<class T, class Resize> void Vector<T, Resize>::
 	/* Shift data over if necessary. */
 	lenToSlideOver = BaseTable::tabLen - endPos;	
 	if ( len > 0 && lenToSlideOver > 0 )
-		memmove(dst, dst + len, sizeof(T)*lenToSlideOver);
+		v_memmove(dst, dst + len, lenToSlideOver);
 
 	/* Shrink the data if necessary. */
 	downResize( newLen );
@@ -1041,6 +1073,7 @@ template<class T, class Resize> void Vector<T, Resize>::
 	/* Set the new data length. */
 	BaseTable::tabLen = newLen;
 }
+
 
 /**
  * \brief Insert len elements at position pos.
@@ -1067,8 +1100,8 @@ template<class T, class Resize> void Vector<T, Resize>::
 
 	/* Shift over data at insert spot if needed. */
 	if ( len > 0 && pos < BaseTable::tabLen ) {
-		memmove(BaseTable::data + pos + len, BaseTable::data + pos,
-				sizeof(T)*(BaseTable::tabLen-pos));
+		v_memmove( BaseTable::data + pos + len, BaseTable::data + pos,
+				BaseTable::tabLen-pos );
 	}
 
 	/* Copy data in element by element. */
@@ -1106,8 +1139,8 @@ template<class T, class Resize> void Vector<T, Resize>::
 
 	/* Shift over data at insert spot if needed. */
 	if ( len > 0 && pos < BaseTable::tabLen ) {
-		memmove(BaseTable::data + pos + len, BaseTable::data + pos,
-				sizeof(T)*(BaseTable::tabLen-pos));
+		v_memmove( BaseTable::data + pos + len, BaseTable::data + pos,
+				BaseTable::tabLen - pos );
 	}
 
 	/* Copy the data item in one at a time. */
@@ -1143,8 +1176,8 @@ template<class T, class Resize> void Vector<T, Resize>::
 
 	/* Shift over data at insert spot if needed. */
 	if ( len > 0 && pos < BaseTable::tabLen ) {
-		memmove(BaseTable::data + pos + len, BaseTable::data + pos,
-				sizeof(T)*(BaseTable::tabLen-pos));
+		v_memmove(BaseTable::data + pos + len, BaseTable::data + pos,
+				BaseTable::tabLen - pos );
 	}
 
 	/* Init new data with default constructors. */
@@ -1170,8 +1203,8 @@ template<class T, class Resize> void Vector<T, Resize>::
 
 	/* Shift over data at insert spot if needed. */
 	if ( len > 0 && pos < BaseTable::tabLen ) {
-		memmove(BaseTable::data + pos + len, BaseTable::data + pos,
-			sizeof(T)*(BaseTable::tabLen-pos));
+		v_memmove( BaseTable::data + pos + len, BaseTable::data + pos,
+			BaseTable::tabLen - pos );
 	}
 
 	/* Save the new length. */

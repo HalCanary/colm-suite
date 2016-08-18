@@ -6,6 +6,10 @@ AM_INIT_AUTOMAKE([foreign])
 AC_SUBST(PUBDATE)
 AC_CONFIG_HEADER(src/config.h)
 
+CXXFLAGS="-Wall -g"
+
+AC_PROG_CXX
+
 AC_CONFIG_MACRO_DIR([m4])
 m4_include([m4/common.m4])
 
