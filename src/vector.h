@@ -653,8 +653,11 @@ template<class T, class Resize> void Vector<T, Resize>::
 			dst[i] = std::move( src[i] );
 		}
 	}
-	else {
-		::memmove( src, dst, sizeof(T)*n );
+	else if ( dst < src ) {
+		for ( long i = 0; i < n; i++ ) {
+			new(dst + i) T();
+			dst[i] = std::move( src[i] );
+		}
 	}
 }
 
