@@ -661,9 +661,13 @@ template<class T, class Resize> void Vector<T, Resize>::
 	}
 }
 
+/* Implementation of realloc that respects C++ move semantics. Lengths are
+ * expressed in sizeof(T) */
 template<class T, class Resize> T *Vector<T, Resize>::v_realloc( T *data, int len, int newLen )
 {
 	T *newData = (T*) malloc( sizeof(T) * newLen );
+	if ( newData == 0 )
+		throw std::bad_alloc();
 	for ( int i = 0; i < len; i++ ) {
 		new(newData + i) T();
 		newData[i] = std::move( data[i] );
